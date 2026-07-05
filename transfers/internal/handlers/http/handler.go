@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 	"transfers/internal/domain"
+	"transfers/pb"
 
 	"github.com/xligenda/spworlds"
+	"google.golang.org/grpc"
 )
 
 type TransferService interface {
@@ -38,11 +40,17 @@ type AuthProvider interface {
 	ValidateWebhookMiddleware(next http.HandlerFunc) http.HandlerFunc
 }
 
+type PlayerServiceClient interface {
+	ServerOnline(ctx context.Context, in *pb.ServerAdress, opts ...grpc.CallOption) (*pb.ServerOnlineResponse, error)
+}
+
 type Handler struct {
-	auth     AuthProvider
-	spworlds *spworlds.Client
-	svc      TransferService
-	log      *slog.Logger
+	auth         AuthProvider
+	players      PlayerServiceClient
+	spworlds     *spworlds.Client
+	svc          TransferService
+	log          *slog.Logger
+	mcServerAddr string
 }
 
 func NewHandler(
@@ -64,8 +72,8 @@ func NewHandler(
 
 func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
+	mux.HandleFunc("GET /data/online", h.fetchServerData)
 	mux.HandleFunc("POST /auth/init", h.auth.AuthInit)
-
 	mux.HandleFunc("POST /webhooks/spworlds/payment", h.auth.ValidateWebhookMiddleware(h.paymentWebhook))
 
 	mux.HandleFunc("POST /transfer", h.auth.JWTMiddleware(h.createTransfer))

@@ -31,7 +31,7 @@ func NewPlayerServer() *PlayerServer {
 	return &PlayerServer{Timeout: defaultTimeout}
 }
 
-func (s *PlayerServer) GetRandomPlayer(ctx context.Context, req *pb.RandomServerPlayerRequest) (*pb.ServerPlayerResponse, error) {
+func (s *PlayerServer) GetRandomPlayer(ctx context.Context, req *pb.ServerAdress) (*pb.ServerPlayerResponse, error) {
 	address := req.GetAddress()
 	if address == "" {
 		return nil, status.Error(codes.InvalidArgument, "address is required, format host:port")
@@ -79,5 +79,24 @@ func (s *PlayerServer) GetPlayer(ctx context.Context, req *pb.PlayerRequest) (*p
 	return &pb.Player{
 		Id:       profile.ID,
 		Username: profile.Name,
+	}, nil
+}
+
+func (s *PlayerServer) ServerOnline(
+	ctx context.Context,
+	req *pb.ServerAdress,
+) (*pb.ServerOnlineResponse, error) {
+	address := req.GetAddress()
+	if address == "" {
+		return nil, status.Error(codes.InvalidArgument, "address is required, format host:port")
+	}
+
+	statusResp, err := s.getStatusWithCache(address)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get server status: %v", err)
+	}
+
+	return &pb.ServerOnlineResponse{
+		OnlineCount: int32(statusResp.Players.Online),
 	}, nil
 }

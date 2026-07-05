@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	PlayerService_GetRandomServerPlayer_FullMethodName = "/mcplayer.PlayerService/GetRandomServerPlayer"
+	PlayerService_ServerOnline_FullMethodName          = "/mcplayer.PlayerService/ServerOnline"
 	PlayerService_GetPlayer_FullMethodName             = "/mcplayer.PlayerService/GetPlayer"
 )
 
@@ -27,7 +28,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type PlayerServiceClient interface {
-	GetRandomServerPlayer(ctx context.Context, in *RandomServerPlayerRequest, opts ...grpc.CallOption) (*ServerPlayerResponse, error)
+	GetRandomServerPlayer(ctx context.Context, in *ServerAdress, opts ...grpc.CallOption) (*ServerPlayerResponse, error)
+	ServerOnline(ctx context.Context, in *ServerAdress, opts ...grpc.CallOption) (*ServerOnlineResponse, error)
 	GetPlayer(ctx context.Context, in *PlayerRequest, opts ...grpc.CallOption) (*Player, error)
 }
 
@@ -39,9 +41,18 @@ func NewPlayerServiceClient(cc grpc.ClientConnInterface) PlayerServiceClient {
 	return &playerServiceClient{cc}
 }
 
-func (c *playerServiceClient) GetRandomServerPlayer(ctx context.Context, in *RandomServerPlayerRequest, opts ...grpc.CallOption) (*ServerPlayerResponse, error) {
+func (c *playerServiceClient) GetRandomServerPlayer(ctx context.Context, in *ServerAdress, opts ...grpc.CallOption) (*ServerPlayerResponse, error) {
 	out := new(ServerPlayerResponse)
 	err := c.cc.Invoke(ctx, PlayerService_GetRandomServerPlayer_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *playerServiceClient) ServerOnline(ctx context.Context, in *ServerAdress, opts ...grpc.CallOption) (*ServerOnlineResponse, error) {
+	out := new(ServerOnlineResponse)
+	err := c.cc.Invoke(ctx, PlayerService_ServerOnline_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +72,8 @@ func (c *playerServiceClient) GetPlayer(ctx context.Context, in *PlayerRequest, 
 // All implementations must embed UnimplementedPlayerServiceServer
 // for forward compatibility
 type PlayerServiceServer interface {
-	GetRandomServerPlayer(context.Context, *RandomServerPlayerRequest) (*ServerPlayerResponse, error)
+	GetRandomServerPlayer(context.Context, *ServerAdress) (*ServerPlayerResponse, error)
+	ServerOnline(context.Context, *ServerAdress) (*ServerOnlineResponse, error)
 	GetPlayer(context.Context, *PlayerRequest) (*Player, error)
 	mustEmbedUnimplementedPlayerServiceServer()
 }
@@ -70,8 +82,11 @@ type PlayerServiceServer interface {
 type UnimplementedPlayerServiceServer struct {
 }
 
-func (UnimplementedPlayerServiceServer) GetRandomServerPlayer(context.Context, *RandomServerPlayerRequest) (*ServerPlayerResponse, error) {
+func (UnimplementedPlayerServiceServer) GetRandomServerPlayer(context.Context, *ServerAdress) (*ServerPlayerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRandomServerPlayer not implemented")
+}
+func (UnimplementedPlayerServiceServer) ServerOnline(context.Context, *ServerAdress) (*ServerOnlineResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ServerOnline not implemented")
 }
 func (UnimplementedPlayerServiceServer) GetPlayer(context.Context, *PlayerRequest) (*Player, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPlayer not implemented")
@@ -90,7 +105,7 @@ func RegisterPlayerServiceServer(s grpc.ServiceRegistrar, srv PlayerServiceServe
 }
 
 func _PlayerService_GetRandomServerPlayer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RandomServerPlayerRequest)
+	in := new(ServerAdress)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -102,7 +117,25 @@ func _PlayerService_GetRandomServerPlayer_Handler(srv interface{}, ctx context.C
 		FullMethod: PlayerService_GetRandomServerPlayer_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PlayerServiceServer).GetRandomServerPlayer(ctx, req.(*RandomServerPlayerRequest))
+		return srv.(PlayerServiceServer).GetRandomServerPlayer(ctx, req.(*ServerAdress))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PlayerService_ServerOnline_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServerAdress)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlayerServiceServer).ServerOnline(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlayerService_ServerOnline_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlayerServiceServer).ServerOnline(ctx, req.(*ServerAdress))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -135,6 +168,10 @@ var PlayerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRandomServerPlayer",
 			Handler:    _PlayerService_GetRandomServerPlayer_Handler,
+		},
+		{
+			MethodName: "ServerOnline",
+			Handler:    _PlayerService_ServerOnline_Handler,
 		},
 		{
 			MethodName: "GetPlayer",

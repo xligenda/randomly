@@ -159,7 +159,7 @@ func (s *TransferService) findReceiverWithCards(ctx context.Context) (string, er
 			return "", err
 		}
 
-		player, err := s.players.GetRandomServerPlayer(ctx, &pb.RandomServerPlayerRequest{
+		player, err := s.players.GetRandomServerPlayer(ctx, &pb.ServerAdress{
 			Address: s.mcServerAddr,
 		})
 		if err != nil {

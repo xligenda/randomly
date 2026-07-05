@@ -30,7 +30,7 @@ type TransferRepo interface {
 }
 
 type PlayerServiceClient interface {
-	GetRandomServerPlayer(ctx context.Context, in *pb.RandomServerPlayerRequest, opts ...grpc.CallOption) (*pb.ServerPlayerResponse, error)
+	GetRandomServerPlayer(ctx context.Context, in *pb.ServerAdress, opts ...grpc.CallOption) (*pb.ServerPlayerResponse, error)
 	GetPlayer(ctx context.Context, in *pb.PlayerRequest, opts ...grpc.CallOption) (*pb.Player, error)
 }
 

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"transfers/internal/handlers/http/auth"
+	"transfers/pb"
 )
 
 type createTransferRequest struct {
@@ -123,6 +124,25 @@ func (h *Handler) getMyTransfers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, publicTransfers)
+}
+
+type serverData struct {
+	Online int `json:"online"`
+}
+
+func (h *Handler) fetchServerData(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.players.ServerOnline(r.Context(), &pb.ServerAdress{
+		Address: h.mcServerAddr,
+	})
+
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, serverData{
+		Online: int(resp.GetOnlineCount()),
+	})
 }
 
 // GET /health
