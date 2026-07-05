@@ -1,0 +1,88 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - xrz
+
+  migrations:
+    image: postgres:16
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - xrz
+    environment:
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
+    volumes:
+      - ./migrations:/migrations:ro
+    command: sh /migrations/run.sh
+    restart: "no"
+
+  players:
+    build:
+      context: ./players
+      dockerfile: Dockerfile 
+    restart: unless-stopped
+    networks:
+      - xrz
+    ports:
+      - "50051:50051"
+
+  transfers:
+    build: 
+      context: ./transfers
+      dockerfile: Dockerfile 
+    restart: unless-stopped
+    depends_on:
+      players:
+        condition: service_started
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - xrz
+    environment:
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
+      SPW_CLIENT_ID: ${SPW_CLIENT_ID}
+      SPW_CLIENT_SECRET: ${SPW_CLIENT_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      PLAYERS_ADDR: players:50051
+      MC_SERVER_ADDR: ${MC_SERVER_ADDR}
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+
+  ui:
+    image: nginx:alpine
+    restart: unless-stopped
+    networks:
+      - xrz
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    ports:
+      - "8081:80"
+
+networks:
+  xrz:
+    driver: bridge
+  
+
+volumes:
+  postgres_data:
+    driver: local
+
+  
