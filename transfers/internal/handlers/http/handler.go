@@ -56,6 +56,8 @@ type Handler struct {
 func NewHandler(
 	auth AuthProvider,
 	spworlds *spworlds.Client,
+	players PlayerServiceClient,
+	mcServerAddr string,
 	svc TransferService,
 	log *slog.Logger,
 ) *Handler {
@@ -63,14 +65,17 @@ func NewHandler(
 		log = slog.Default()
 	}
 	return &Handler{
-		auth:     auth,
-		spworlds: spworlds,
-		svc:      svc,
-		log:      log,
+		auth:         auth,
+		spworlds:     spworlds,
+		players:      players,
+		mcServerAddr: mcServerAddr,
+		svc:          svc,
+		log:          log,
 	}
 }
 
 func (h *Handler) Routes(mux *http.ServeMux) {
+
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /data/online", h.fetchServerData)
 	mux.HandleFunc("POST /auth/init", h.auth.AuthInit)

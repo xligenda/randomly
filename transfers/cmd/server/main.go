@@ -90,7 +90,7 @@ func main() {
 	playerClient := pb.NewPlayerServiceClient(grpcConn)
 	repo := postgres.NewTransferRepo(db)
 	service := transfers.NewTransferService(repo, spwClient, playerClient, l, mcAddr)
-	handler := httpHandlers.NewHandler(authp, spwClient, service, l)
+	handler := httpHandlers.NewHandler(authp, spwClient, playerClient, mcAddr, service, l)
 
 	mux := http.NewServeMux()
 	handler.Routes(mux)
