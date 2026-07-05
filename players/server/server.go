@@ -2,9 +2,8 @@ package server
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"players/mc"
@@ -14,11 +13,18 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const defaultTimeout = 5 * time.Second
+const (
+	defaultTimeout = 5 * time.Second
+	cacheDuration  = 3 * time.Second
+)
 
 type PlayerServer struct {
 	pb.UnimplementedPlayerServiceServer
 	Timeout time.Duration
+
+	mu           sync.RWMutex
+	lastStatus   *mc.StatusResponse
+	lastPingedAt time.Time
 }
 
 func NewPlayerServer() *PlayerServer {
@@ -28,25 +34,25 @@ func NewPlayerServer() *PlayerServer {
 func (s *PlayerServer) GetRandomPlayer(ctx context.Context, req *pb.RandomServerPlayerRequest) (*pb.ServerPlayerResponse, error) {
 	address := req.GetAddress()
 	if address == "" {
-		return nil, errors.New("address is required, format host:port")
+		return nil, status.Error(codes.InvalidArgument, "address is required, format host:port")
 	}
 
-	status, err := mc.Ping(address, s.Timeout)
+	statusResp, err := s.getStatusWithCache(address)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ping %q: %w", address, err)
+		return nil, status.Errorf(codes.Internal, "failed to get server status: %v", err)
 	}
 
-	sample := status.Players.Sample
+	sample := statusResp.Players.Sample
 	if len(sample) == 0 {
-		return nil, errors.New("server returned no player sample: either nobody is online or the server hides the sample")
+		return nil, status.Error(codes.FailedPrecondition, "server returned no player sample: either nobody is online or the server hides the sample")
 	}
 
 	player := sample[rand.Intn(len(sample))]
 	return &pb.ServerPlayerResponse{
 		Username:    player.Name,
 		Id:          player.ID,
-		OnlineCount: int32(status.Players.Online),
-		MaxCount:    int32(status.Players.Max),
+		OnlineCount: int32(statusResp.Players.Online),
+		MaxCount:    int32(statusResp.Players.Max),
 	}, nil
 }
 
