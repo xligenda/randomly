@@ -16,7 +16,6 @@ import (
 type TransferRepo interface {
 	CreateTransfer(ctx context.Context, t *domain.Transfer) error
 	FindTransfer(ctx context.Context, id string) (*domain.Transfer, error)
-	FindReleasedTransfers(ctx context.Context) ([]domain.ReleasedTransfer, error)
 	ConfirmPayment(ctx context.Context, id string) (bool, error)
 	LeaseReceiver(ctx context.Context, id, receiver string, leaseUntil time.Time) (bool, error)
 	SetSent(ctx context.Context, id string) error
@@ -27,6 +26,7 @@ type TransferRepo interface {
 		limit int,
 	) ([]*domain.Transfer, error)
 	SetStatusNotSelected(ctx context.Context, id string) error
+	FindAndLeaseTransfers(ctx context.Context, limit int, leaseDuration time.Duration) ([]domain.ReleasedTransfer, error)
 }
 
 type PlayerServiceClient interface {

@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	httpHandlers "transfers/internal/handlers/http"
@@ -37,8 +40,6 @@ func getEnv(key, def string) string {
 	return def
 }
 
-// todo: start worker looking for free transfers
-
 func main() {
 	l := slog.Default()
 
@@ -67,39 +68,79 @@ func main() {
 	}
 	defer db.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		l.Error("ping db", slog.Any("err", err))
-		return
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			l.Error("ping db", slog.Any("err", err))
+			return
+		}
 	}
 
 	spwClient := spworlds.NewClient(spwID, spwSecret, nil)
+	authp := auth.NewAuthProvider(&SPWmini{token: spwSecret}, spwClient, jwtSecret, l)
 
-	authp := auth.NewAuthProvider(&SPWmini{
-		token: spwSecret,
-	}, spwClient, jwtSecret, l)
-
-	conn, err := grpc.NewClient(playersAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	grpcConn, err := grpc.NewClient(playersAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		l.Error("dial players", slog.Any("err", err))
 		return
 	}
-	defer conn.Close()
+	defer grpcConn.Close()
 
-	playerClient := pb.NewPlayerServiceClient(conn)
-
+	playerClient := pb.NewPlayerServiceClient(grpcConn)
 	repo := postgres.NewTransferRepo(db)
 	service := transfers.NewTransferService(repo, spwClient, playerClient, l, mcAddr)
-
 	handler := httpHandlers.NewHandler(authp, spwClient, service, l)
 
 	mux := http.NewServeMux()
 	handler.Routes(mux)
 
+	eventListener := postgres.NewEventListener(dbURL)
+
+	worker := transfers.NewWorker(service, l, transfers.WorkerConfig{
+		PollInterval:  time.Second * 25,
+		BatchLimit:    1,
+		LeaseDuration: time.Minute * 2,
+		Concurrency:   15,
+	}, eventListener)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	workerErrCh := make(chan error, 1)
+	go func() {
+		l.Info("starting transfer worker")
+		workerErrCh <- worker.Run(ctx)
+	}()
+
 	srv := &http.Server{Addr: ":" + port, Handler: mux}
-	l.Info("starting transfers service", slog.String("addr", srv.Addr))
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		l.Error("server error", slog.Any("err", err))
+	srvErrCh := make(chan error, 1)
+	go func() {
+		l.Info("starting transfers service", slog.String("addr", srv.Addr))
+		srvErrCh <- srv.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		l.Info("shutdown signal received")
+	case err := <-workerErrCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			l.Error("worker exited", slog.Any("err", err))
+		}
+	case err := <-srvErrCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Error("server error", slog.Any("err", err))
+		}
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		l.Error("http shutdown", slog.Any("err", err))
+	}
+
+	stop()
+	if err := <-workerErrCh; err != nil && !errors.Is(err, context.Canceled) {
+		l.Error("worker stopped with error", slog.Any("err", err))
 	}
 }

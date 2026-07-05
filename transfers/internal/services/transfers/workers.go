@@ -32,7 +32,7 @@ func (s *TransferService) selectReceiver(ctx context.Context, id string) error {
 
 	g, gCtx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
+	g.Go(func() error { // receiver may be equals to sender
 		selected, err := s.findReceiverWithCards(gCtx)
 		if err != nil {
 			return err
@@ -146,6 +146,10 @@ func (s *TransferService) autoConfirmSelection(ctx context.Context, id string) e
 	return nil
 }
 
-func (s *TransferService) findReleasedTransfers(ctx context.Context) ([]domain.ReleasedTransfer, error) {
-	return s.repo.FindReleasedTransfers(ctx)
+func (s *TransferService) findReleasedTransfers(
+	ctx context.Context,
+	limit int,
+	leaseDuration time.Duration,
+) ([]domain.ReleasedTransfer, error) {
+	return s.repo.FindAndLeaseTransfers(ctx, limit, leaseDuration)
 }
