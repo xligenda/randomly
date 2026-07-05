@@ -26,6 +26,7 @@ type TransferRepo interface {
 		uuid string,
 		limit int,
 	) ([]*domain.Transfer, error)
+	SetStatusNotSelected(ctx context.Context, id string) error
 }
 
 type PlayerServiceClient interface {

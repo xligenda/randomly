@@ -10,6 +10,7 @@ var (
 	ErrFailedToPersist           = errors.New("failed to persist transfer")
 	ErrNotFound                  = errors.New("transfer not found")
 	ErrNothingToDo               = errors.New("nothing to do")
+	ErrIncorrectState            = errors.New("this action is forbidden in this status")
 	ErrFailedToParse             = errors.New("failed to parse payment payload")
 	ErrFailedToConfirmPayment    = errors.New("failed to confirm payment")
 	ErrNoEligibleReceiver        = errors.New("no eligible receiver found after max attempts")

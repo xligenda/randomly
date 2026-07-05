@@ -6,7 +6,7 @@ CREATE TABLE transfers (
     anonymous      BOOLEAN NOT NULL DEFAULT FALSE,
     receiver       VARCHAR(255),
     status         VARCHAR(32) NOT NULL DEFAULT 'created'
-                   CHECK (status IN ('created', 'paid', 'selecting', 'sent', 'failed')),
+                   CHECK (status IN ('created', 'paid', 'user_selected', 'not_selected', 'not_selected', 'failed')),
     failure_reason TEXT,
     payment_code    TEXT NOT NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),

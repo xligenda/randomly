@@ -3,7 +3,6 @@ package transfers
 import (
 	"context"
 	"log/slog"
-	"time"
 	"transfers/internal/domain"
 	"transfers/pb"
 
@@ -55,10 +54,6 @@ func (s *TransferService) FindTransfer(ctx context.Context, id string) (*domain.
 	return t, nil
 }
 
-func (s *TransferService) FindReleasedTransfers(ctx context.Context) ([]domain.ReleasedTransfer, error) {
-	return s.repo.FindReleasedTransfers(ctx)
-}
-
 func (s *TransferService) ConfirmPayment(
 	ctx context.Context,
 	payment *spworlds.PaymentData,
@@ -75,7 +70,8 @@ func (s *TransferService) ConfirmPayment(
 	}
 
 	if t.Status != domain.StatusCreated {
-		return nil, ErrFailedToConfirmPayment
+		s.rollbackPayment(ctx, payload.ID, payment.Payer, payload.Amount, ErrIncorrectState)
+		return nil, ErrIncorrectState
 	}
 
 	confirmed, err := s.repo.ConfirmPayment(ctx, t.ID)
@@ -93,60 +89,6 @@ func (s *TransferService) ConfirmPayment(
 
 	t.ConfirmPayment()
 	return t, nil
-}
-
-func (s *TransferService) SelectReceiver(ctx context.Context, id string) (*domain.Transfer, error) {
-	var (
-		receiverID string
-		transfer   *domain.Transfer
-	)
-
-	g, gCtx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		selected, err := s.findReceiverWithCards(gCtx)
-		if err != nil {
-			return err
-		}
-		receiverID = selected
-		return nil
-	})
-
-	g.Go(func() error {
-		t, err := s.repo.FindTransfer(gCtx, id)
-		if err != nil {
-			return err
-		}
-		transfer = t
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		if transfer != nil {
-			s.failTransfer(ctx, id, transfer.Sender, transfer.Amount, err,
-				"failed to mark transfer as failed after receiver selection error",
-			)
-		}
-		return nil, mapRepoErr(err)
-	}
-
-	leaseUntil := time.Now().Add(selectReceiverLeaseDuration)
-
-	leased, err := s.repo.LeaseReceiver(ctx, id, receiverID, leaseUntil)
-	if err != nil {
-		s.failTransfer(ctx, id, transfer.Sender, transfer.Amount, err,
-			"failed to mark transfer as failed after lease error",
-		)
-		return nil, ErrFailedToLeaseReceiver
-	}
-	if !leased {
-		return nil, ErrReceiverAlreadyLeased
-	}
-
-	transfer.SelectReceiver(receiverID)
-	transfer.SetLease(leaseUntil)
-
-	return transfer, nil
 }
 
 func (s *TransferService) ConfirmSelection(
@@ -182,6 +124,10 @@ func (s *TransferService) ConfirmSelection(
 		return nil, mapRepoErr(err)
 	}
 
+	if t.Status != domain.StatusSelectedReceiver {
+		return nil, ErrIncorrectState
+	}
+
 	if len(cards) == 0 {
 		s.failTransfer(ctx, id, t.Sender, t.Amount, ErrUserCardsInvalid,
 			"failed to mark transfer as failed after empty cards",
@@ -205,11 +151,10 @@ func (s *TransferService) ConfirmSelection(
 
 	comment := anonymousComment(t.Comment)
 	if !t.Anonymous {
-		player, err := s.players.GetPlayer(ctx, &pb.PlayerRequest{
+		if sender, err := s.players.GetPlayer(ctx, &pb.PlayerRequest{
 			Identifier: &pb.PlayerRequest_Uuid{Uuid: t.Sender},
-		})
-		if err == nil {
-			comment = identifiedComment(player.Username, t.Comment)
+		}); err == nil {
+			comment = identifiedComment(sender.Username, t.Comment)
 		}
 	}
 
@@ -221,7 +166,6 @@ func (s *TransferService) ConfirmSelection(
 	}
 
 	if err := s.repo.SetSent(ctx, id); err != nil {
-		// no rollback needed as transaction is already created
 		s.logger.ErrorContext(ctx, "transfer completed but failed to mark as sent — manual reconciliation required",
 			slog.String("transfer_id", id),
 			slog.Any("error", err),
@@ -230,13 +174,6 @@ func (s *TransferService) ConfirmSelection(
 
 	t.SetPaid()
 	return t, nil
-}
-
-func (s *TransferService) AutoConfirmSelection(
-	ctx context.Context,
-	id string,
-) {
-	// todo: auto selection when lease is ended
 }
 
 func (s *TransferService) UserTransfers(

@@ -49,7 +49,7 @@ func (t *Transfer) ConfirmPayment() {
 }
 
 func (t *Transfer) SelectReceiver(receiver string) {
-	t.Status = StatusSelectingCard
+	t.Status = StatusSelectedReceiver
 	// should add lease, so don't release
 }
 

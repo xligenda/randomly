@@ -135,11 +135,11 @@ func (r *TransferRepo) FindReleasedTransfers(ctx context.Context) ([]domain.Rele
 	const q = `
 		SELECT id, status
 		FROM transfers
-		WHERE status IN ($1, $2)
+		WHERE status IN ($1, $2, $3)
 		  AND (leased_until IS NULL OR leased_until < now())
 	`
 	rows, err := r.db.QueryContext(ctx, q,
-		domain.StatusPaid.String(), domain.StatusSelectingCard.String(),
+		domain.StatusPaid.String(), domain.StatusSelectedReceiver.String(), domain.StatusNotSelected.String(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("find released transfers: %w", err)
@@ -181,6 +181,30 @@ func (r *TransferRepo) ConfirmPayment(ctx context.Context, id string) (bool, err
 	return n > 0, nil
 }
 
+func (r *TransferRepo) SetStatusNotSelected(ctx context.Context, id string) error {
+	const q = `
+		UPDATE transfers SET
+			status       = $2,
+			leased_until = NULL
+		WHERE id = $1
+		  AND status = $3
+	`
+	res, err := r.db.ExecContext(ctx, q,
+		id, domain.StatusNotSelected.String(), domain.StatusSelectedReceiver.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("confirm payment: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *TransferRepo) LeaseReceiver(ctx context.Context, id, receiver string, leaseUntil time.Time) (bool, error) {
 	const q = `
 		UPDATE transfers SET
@@ -192,7 +216,7 @@ func (r *TransferRepo) LeaseReceiver(ctx context.Context, id, receiver string, l
 		  AND (leased_until IS NULL OR leased_until < now())
 	`
 	res, err := r.db.ExecContext(ctx, q,
-		id, receiver, domain.StatusSelectingCard.String(), leaseUntil, domain.StatusPaid.String(),
+		id, receiver, domain.StatusSelectedReceiver.String(), leaseUntil, domain.StatusPaid.String(),
 	)
 	if err != nil {
 		return false, fmt.Errorf("lease receiver: %w", err)
