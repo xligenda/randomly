@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package mcplayer;
+
+option go_package = "mc-random-player/pb";
+
+service PlayerService {
+  rpc GetRandomServerPlayer (RandomServerPlayerRequest) returns (ServerPlayerResponse);
+  rpc GetPlayer (PlayerRequest) returns (Player);
+}
+
+message RandomServerPlayerRequest {
+  string address = 1;
+}
+
+message PlayerRequest {
+  oneof identifier {
+    string uuid = 1;
+    string username = 2;
+  }
+}
+
+message ServerPlayerResponse {
+  string id = 1;
+  string username = 2;
+  int32 online_count = 3;
+  int32 max_count = 4;
+}
+
+message Player {
+  string id = 1;
+  string username = 2;
+}
